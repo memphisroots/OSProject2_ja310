@@ -106,7 +106,10 @@ consume(int id, int item) {
 /* we will need to define a common shared queue
    that everyone can access */
 queue fifo_buffer ;
-
+//setup semaphores
+sem_t fU;
+sem_t eM;
+sem_t mutex;
 /* this defines a total number of items each producer is going to produce */
 #define MAX_ITEM_TO_PRODUCE 10
 
@@ -116,9 +119,21 @@ producer(void* arg) {
   /* fill in the details here */
   /* you need to ensure that the function satisfies the
      requirements of the producer/consumer problem */
+  int prod_ident = *((int*)arg);
   int i;
+  int make_prod;
   for(i=0;i<MAX_ITEM_TO_PRODUCE;++i) {
     /* each producer produces "MAX_ITEM_TO_PRODUCE" and then quit */
+    make_prod =  produce(prod_ident, i);
+    sem_wait(&fU);
+    sem_wait(&eM);
+    //after semaphore waits put produced
+    enqueue(&fifo_buffer, make_prod);
+    //make post to empty and mut
+    sem_post(&eM);
+    sem_post(&mutex);
+
+
   }
   return 0 ;
 }
@@ -129,10 +144,21 @@ consumer(void* arg) {
   /* fill in the details here */
   /* you need to ensure that the function satisfies the
      requirements of the producer/consumer problem */
-
+   int cons_id = *((int*)arg);
+   int get_consume;
   /* consumers never quit */
   while(1) {
-    /* fill in the details here */
+    /* wait on semaphores*/
+    sem_wait(&eM);
+    sem_wait(&mutex);
+    //do consume
+    dequeue(&fifo_buffer, &get_consume);
+    //post semaphore
+    sem_post(&mutex);
+    sem_post(&fU);
+
+    //run consumme
+    consume(cons_id, get_consume);
   }
   return 0 ;
 }
@@ -142,19 +168,30 @@ consumer(void* arg) {
 int
 main(int argc, char* argv[]) {
   int num_producer, num_consumer ;
-  int i ;
+  pthread_t thread_id;
+  int i ,tots;
+  int *nums ;
+  //int make_prod;
+
 
   if(argc != 3) {
     printf("Usage: %s <# producer> <# consumer>\n", argv[0]) ;
     return 1 ;
   }
-
+  // get prod/consume
   num_producer = atoi(argv[1]) ;
   num_consumer = atoi(argv[2]) ;
 
+  //set semaphore init state
+  sem_init(&mutex, 0, 1);
+  sem_init(&fU, 0, MAX_FIFO_SIZE);
+  sem_init(&eM, 0, 0);
+  
+
   /* we need to initialize the global queue buffer */
   init_queue(&fifo_buffer) ;
-
+  tots = num_producer + num_consumer;
+  nums = (int*)malloc(sizeof(int)*(tots));
   /* you need to replace the following function calls
      with actual thread launching, you will also need to
      create, initialize, and destroy the sempahores properly,
@@ -163,12 +200,16 @@ main(int argc, char* argv[]) {
   /* we create num_consumer consumers first */
   printf("Creating %d consumers\n", num_consumer) ;
   for(i=0;i<num_consumer;++i) {
-    consumer( (void*)i);
+     nums[i] = i + 1;
+    pthread_create(&thread_id, NULL, consumer, (void*)&nums[i]);
+    //consumer( (void*)i);
   }
   printf("Creating %d producers\n", num_producer) ;
   /* we create num_producer producers then */
   for(i=0;i<num_producer;++i) {
-    producer( (void*)i);
+    nums[i] = i + 1;
+    pthread_create(&thread_id, NULL, producer, (void*)&nums[i]);
+    //producer( (void*)i);
   }
 
   /* since consumers never quit, we'll notify the user to */
@@ -177,6 +218,8 @@ main(int argc, char* argv[]) {
   printf("* All Producers finished, please terminate the program *\n") ;
   printf("* by \"Ctrl-C\" when all consumers print their items     *\n") ;
   printf("********************************************************\n") ;
+
+   while(1);
 
   return 0 ;
 }
